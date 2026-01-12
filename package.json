@@ -1,0 +1,37 @@
+{
+  "name": "@layerzerolabs/ovault-send-scripts",
+  "version": "1.0.0",
+  "description": "Standalone scripts for OVault operations",
+  "private": true,
+  "scripts": {
+    "1": "ts-node scripts/1-asset-deposit-cross-chain.ts",
+    "2": "ts-node scripts/2-share-redemption-cross-chain.ts",
+    "3": "ts-node scripts/3-direct-vault-deposit.ts",
+    "4": "ts-node scripts/4-direct-vault-redemption.ts",
+    "5": "ts-node scripts/5-hub-to-spoke-assets.ts",
+    "6": "ts-node scripts/6-hub-to-spoke-shares.ts",
+    "7": "ts-node scripts/7-spoke-to-hub-deposit.ts",
+    "8": "ts-node scripts/8-spoke-to-hub-redemption.ts"
+  },
+  "dependencies": {
+    "@layerzerolabs/lz-v2-utilities": "^2.3.3",
+    "ethers": "^5.7.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "layerzero",
+    "oft",
+    "ovault",
+    "erc4626",
+    "cross-chain"
+  ],
+  "author": "",
+  "license": "ISC"
+}
