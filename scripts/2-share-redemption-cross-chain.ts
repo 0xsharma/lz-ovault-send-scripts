@@ -21,7 +21,7 @@ import { Options, addressToBytes32 } from '@layerzerolabs/lz-v2-utilities'
 const CONFIG = {
     // ⚠️ SECURITY: Never commit private keys to git!
     privateKey: 'YOUR_PRIVATE_KEY_HERE',
-    
+
     // Chain configuration
     chains: {
         arbitrumSepolia: {
@@ -40,7 +40,7 @@ const CONFIG = {
             name: 'Base Sepolia',
         },
     },
-    
+
     // Contract addresses
     contracts: {
         // Hub chain addresses (Arbitrum Sepolia in this example)
@@ -59,7 +59,7 @@ const CONFIG = {
             assetOFT: '0xYourAssetOFTOnDestinationAddress',
         },
     },
-    
+
     // Transaction parameters
     transaction: {
         srcChain: 'optimismSepolia',   // Source chain where you have shares
@@ -80,7 +80,7 @@ async function main() {
     console.log('='.repeat(80))
     console.log('Share Redemption (Cross-Chain)')
     console.log('='.repeat(80))
-    
+
     // Validate configuration
     if (CONFIG.privateKey === 'YOUR_PRIVATE_KEY_HERE') {
         throw new Error('❌ Please set CONFIG.privateKey in the script')
@@ -91,33 +91,33 @@ async function main() {
     if (CONFIG.contracts.hub.composer === '0xYourOVaultComposerAddress') {
         throw new Error('❌ Please set contract addresses in CONFIG.contracts')
     }
-    
-    const srcChainConfig = CONFIG.chains[CONFIG.transaction.srcChain]
-    const dstChainConfig = CONFIG.chains[CONFIG.transaction.dstChain]
-    const hubChainConfig = CONFIG.chains[CONFIG.transaction.hubChain]
-    
+
+    const srcChainConfig = CONFIG.chains[CONFIG.transaction.srcChain as keyof typeof CONFIG.chains]
+    const dstChainConfig = CONFIG.chains[CONFIG.transaction.dstChain as keyof typeof CONFIG.chains]
+    const hubChainConfig = CONFIG.chains[CONFIG.transaction.hubChain as keyof typeof CONFIG.chains]
+
     if (CONFIG.transaction.srcChain === CONFIG.transaction.hubChain) {
         throw new Error('❌ Source chain cannot be hub chain. Use "4-direct-vault-redemption.ts" for hub→hub operations')
     }
-    
+
     console.log(`Source: ${srcChainConfig.name} (EID: ${srcChainConfig.eid})`)
     console.log(`Hub: ${hubChainConfig.name} (EID: ${hubChainConfig.eid})`)
     console.log(`Destination: ${dstChainConfig.name} (EID: ${dstChainConfig.eid})`)
     console.log(`Amount: ${CONFIG.transaction.amount} shares`)
     console.log(`Recipient: ${CONFIG.transaction.recipientAddress}`)
     console.log('='.repeat(80))
-    
+
     // Setup providers and wallets
     const srcProvider = new ethers.providers.JsonRpcProvider(srcChainConfig.rpcUrl)
     const hubProvider = new ethers.providers.JsonRpcProvider(hubChainConfig.rpcUrl)
     const srcWallet = new ethers.Wallet(CONFIG.privateKey, srcProvider)
-    
+
     console.log(`Your wallet: ${srcWallet.address}`)
-    
+
     // Get vault contract on hub to preview operations
     const vaultAbi = ['function asset() view returns (address)', 'function previewRedeem(uint256) view returns (uint256)']
     const vault = new ethers.Contract(CONFIG.contracts.hub.vault, vaultAbi, hubProvider)
-    
+
     // Get decimals
     const erc20Abi = ['function decimals() view returns (uint8)']
     const assetAddress = await vault.asset()
@@ -125,9 +125,9 @@ async function main() {
     const assetDecimals = await assetToken.decimals()
     const shareToken = new ethers.Contract(CONFIG.contracts.hub.vault, erc20Abi, hubProvider)
     const shareDecimals = await shareToken.decimals()
-    
+
     const inputAmountUnits = parseUnits(CONFIG.transaction.amount, shareDecimals)
-    
+
     // Preview vault redemption
     let expectedOutputAmount: string
     try {
@@ -138,7 +138,7 @@ async function main() {
         console.warn(`⚠️  Vault preview failed, using 1:1 estimate`)
         expectedOutputAmount = inputAmountUnits.toString()
     }
-    
+
     // Calculate minAmount with slippage
     let minAmountOut: string
     if (CONFIG.transaction.minAmount) {
@@ -150,40 +150,51 @@ async function main() {
             .div(10000)
             .toString()
     }
-    
+
     // Build second hop SendParam (hub → destination)
     const secondHopSendParam = {
         dstEid: dstChainConfig.eid,
         to: addressToBytes32(CONFIG.transaction.recipientAddress),
-        amountLD: expectedOutputAmount,
-        minAmountLD: minAmountOut,
+        amountLD: ethers.BigNumber.from(expectedOutputAmount),
+        minAmountLD: ethers.BigNumber.from(minAmountOut),
         extraOptions: Options.newOptions().addExecutorLzReceiveOption(100000, 0).toHex(),
         composeMsg: '0x',
         oftCmd: '0x',
     }
-    
+
     // Quote second hop
     let lzComposeValue = CONFIG.transaction.lzComposeValue || '0'
-    
+
     if (!CONFIG.transaction.lzComposeValue && dstChainConfig.eid !== hubChainConfig.eid) {
         const oftAbi = ['function quoteSend((uint32,bytes32,uint256,uint256,bytes,bytes,bytes),bool) view returns ((uint256,uint256))']
         const assetOFT = new ethers.Contract(CONFIG.contracts.hub.assetOFT, oftAbi, hubProvider)
-        
+
         try {
-            const quoteFee = await assetOFT.quoteSend(secondHopSendParam, false)
-            lzComposeValue = quoteFee.nativeFee.toString()
+            const quoteFeeResult = await assetOFT.quoteSend(
+                [
+                    secondHopSendParam.dstEid,
+                    secondHopSendParam.to,
+                    secondHopSendParam.amountLD,
+                    secondHopSendParam.minAmountLD,
+                    secondHopSendParam.extraOptions,
+                    secondHopSendParam.composeMsg,
+                    secondHopSendParam.oftCmd,
+                ],
+                false
+            )
+            lzComposeValue = quoteFeeResult[0].toString()
             console.log(`💰 Quoted second hop fee: ${(parseInt(lzComposeValue) / 1e18).toFixed(6)} ETH`)
         } catch (error) {
             console.warn(`⚠️  Quote failed, using default: 0.025 ETH`)
             lzComposeValue = '25000000000000000'
         }
     }
-    
+
     if (dstChainConfig.eid === hubChainConfig.eid) {
         lzComposeValue = '0'
         console.log(`ℹ️  Destination is hub - no second hop needed`)
     }
-    
+
     // Encode composeMsg
     const composeMsg = ethers.utils.defaultAbiCoder.encode(
         ['tuple(uint32,bytes32,uint256,uint256,bytes,bytes,bytes)', 'uint256'],
@@ -200,55 +211,82 @@ async function main() {
             lzComposeValue,
         ]
     )
-    
+
     // Build options for first hop
     let options = Options.newOptions()
-    options = options.addExecutorLzComposeOption(0, CONFIG.transaction.lzComposeGas, lzComposeValue)
+    options = options.addExecutorComposeOption(0, CONFIG.transaction.lzComposeGas, parseInt(lzComposeValue))
     const extraOptions = options.toHex()
-    
+
     // Calculate first hop min amount with slippage
     const slippageBps = 50 // 0.5%
-    const firstHopMinAmount = parseUnits(
-        CONFIG.transaction.minAmount || (parseFloat(CONFIG.transaction.amount) * (1 - slippageBps / 10000)).toString(),
-        shareDecimals
+    const firstHopMinAmount = ethers.BigNumber.from(
+        parseUnits(
+            CONFIG.transaction.minAmount || (parseFloat(CONFIG.transaction.amount) * (1 - slippageBps / 10000)).toString(),
+            shareDecimals
+        )
     )
-    
+
     // Build SendParam for first hop
     const sendParam = {
         dstEid: hubChainConfig.eid,
         to: addressToBytes32(CONFIG.contracts.hub.composer),
-        amountLD: inputAmountUnits,
+        amountLD: ethers.BigNumber.from(inputAmountUnits),
         minAmountLD: firstHopMinAmount,
         extraOptions: extraOptions,
         composeMsg: composeMsg,
         oftCmd: '0x',
     }
-    
+
     // Get source share OFT contract
     const srcOFTAbi = [
         'function quoteSend((uint32,bytes32,uint256,uint256,bytes,bytes,bytes),bool) view returns ((uint256,uint256))',
         'function send((uint32,bytes32,uint256,uint256,bytes,bytes,bytes),(uint256,uint256),address) payable returns ((bytes32,uint64))',
     ]
     const srcOFT = new ethers.Contract(CONFIG.contracts.source.shareOFT, srcOFTAbi, srcWallet)
-    
+
     // Quote the transaction
     console.log(`💭 Quoting transaction...`)
-    const msgFee = await srcOFT.quoteSend(sendParam, false)
+    const msgFeeResult = await srcOFT.quoteSend(
+        [
+            sendParam.dstEid,
+            sendParam.to,
+            sendParam.amountLD,
+            sendParam.minAmountLD,
+            sendParam.extraOptions,
+            sendParam.composeMsg,
+            sendParam.oftCmd,
+        ],
+        false
+    )
+    const msgFee = { nativeFee: msgFeeResult[0], lzTokenFee: msgFeeResult[1] }
     console.log(`💰 LayerZero fee: ${(parseInt(msgFee.nativeFee.toString()) / 1e18).toFixed(6)} ETH`)
-    
+
     // Send the transaction
     console.log(`📤 Sending transaction...`)
-    const tx = await srcOFT.send(sendParam, msgFee, srcWallet.address, { value: msgFee.nativeFee })
+    const tx = await srcOFT.send(
+        [
+            sendParam.dstEid,
+            sendParam.to,
+            sendParam.amountLD,
+            sendParam.minAmountLD,
+            sendParam.extraOptions,
+            sendParam.composeMsg,
+            sendParam.oftCmd,
+        ],
+        [msgFee.nativeFee, msgFee.lzTokenFee],
+        srcWallet.address,
+        { value: msgFee.nativeFee }
+    )
     console.log(`⏳ Transaction hash: ${tx.hash}`)
-    
+
     const receipt = await tx.wait()
     console.log(`✅ Transaction confirmed in block ${receipt.blockNumber}`)
-    
+
     console.log('='.repeat(80))
     console.log('✅ Share Redemption Transaction Sent!')
     console.log('='.repeat(80))
     console.log(`Transaction Hash: ${receipt.transactionHash}`)
-    console.log(`LayerZero Scan: https://testnet.layerzeroscan.com/tx/${receipt.transactionHash}`)
+    console.log(`LayerZero Scan: https://layerzeroscan.com/tx/${receipt.transactionHash}`)
     console.log('='.repeat(80))
     console.log(`Flow: ${CONFIG.transaction.amount} shares (${srcChainConfig.name}) → Vault Redeem (${hubChainConfig.name}) → Assets (${dstChainConfig.name})`)
     console.log('='.repeat(80))

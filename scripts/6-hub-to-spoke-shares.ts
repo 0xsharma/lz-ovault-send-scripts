@@ -77,8 +77,8 @@ async function main() {
         throw new Error('❌ Please set CONFIG.contracts.hubShareOFT')
     }
     
-    const srcChainConfig = CONFIG.chains[CONFIG.transaction.srcChain]
-    const dstChainConfig = CONFIG.chains[CONFIG.transaction.dstChain]
+    const srcChainConfig = CONFIG.chains[CONFIG.transaction.srcChain as keyof typeof CONFIG.chains]
+    const dstChainConfig = CONFIG.chains[CONFIG.transaction.dstChain as keyof typeof CONFIG.chains]
     
     console.log(`Source (Hub): ${srcChainConfig.name} (EID: ${srcChainConfig.eid})`)
     console.log(`Destination: ${dstChainConfig.name} (EID: ${dstChainConfig.eid})`)
@@ -119,8 +119,8 @@ async function main() {
     const sendParam = {
         dstEid: dstChainConfig.eid,
         to: addressToBytes32(CONFIG.transaction.recipientAddress),
-        amountLD: amountUnits,
-        minAmountLD: minAmount,
+        amountLD: ethers.BigNumber.from(amountUnits),
+        minAmountLD: ethers.BigNumber.from(minAmount),
         extraOptions: options.toHex(),
         composeMsg: '0x',
         oftCmd: '0x',
@@ -128,12 +128,37 @@ async function main() {
     
     // Quote the transaction
     console.log(`💭 Quoting transaction...`)
-    const msgFee = await oft.quoteSend(sendParam, false)
+    const msgFeeResult = await oft.quoteSend(
+        [
+            sendParam.dstEid,
+            sendParam.to,
+            sendParam.amountLD,
+            sendParam.minAmountLD,
+            sendParam.extraOptions,
+            sendParam.composeMsg,
+            sendParam.oftCmd,
+        ],
+        false
+    )
+    const msgFee = { nativeFee: msgFeeResult[0], lzTokenFee: msgFeeResult[1] }
     console.log(`💰 LayerZero fee: ${(parseInt(msgFee.nativeFee.toString()) / 1e18).toFixed(6)} ETH`)
     
     // Send the transaction (shares are always ERC20, never native)
     console.log(`📤 Sending transaction...`)
-    const tx = await oft.send(sendParam, msgFee, wallet.address, { value: msgFee.nativeFee })
+    const tx = await oft.send(
+        [
+            sendParam.dstEid,
+            sendParam.to,
+            sendParam.amountLD,
+            sendParam.minAmountLD,
+            sendParam.extraOptions,
+            sendParam.composeMsg,
+            sendParam.oftCmd,
+        ],
+        [msgFee.nativeFee, msgFee.lzTokenFee],
+        wallet.address,
+        { value: msgFee.nativeFee }
+    )
     console.log(`⏳ Transaction hash: ${tx.hash}`)
     
     const receipt = await tx.wait()
@@ -143,7 +168,7 @@ async function main() {
     console.log('✅ Share Transfer Transaction Sent!')
     console.log('='.repeat(80))
     console.log(`Transaction Hash: ${receipt.transactionHash}`)
-    console.log(`LayerZero Scan: https://testnet.layerzeroscan.com/tx/${receipt.transactionHash}`)
+    console.log(`LayerZero Scan: https://layerzeroscan.com/tx/${receipt.transactionHash}`)
     console.log('='.repeat(80))
     console.log(`Flow: ${CONFIG.transaction.amount} shares (${srcChainConfig.name}) → (${dstChainConfig.name})`)
     console.log('='.repeat(80))

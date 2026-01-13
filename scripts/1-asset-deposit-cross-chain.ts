@@ -92,9 +92,9 @@ async function main() {
         throw new Error('❌ Please set contract addresses in CONFIG.contracts')
     }
 
-    const srcChainConfig = CONFIG.chains[CONFIG.transaction.srcChain]
-    const dstChainConfig = CONFIG.chains[CONFIG.transaction.dstChain]
-    const hubChainConfig = CONFIG.chains[CONFIG.transaction.hubChain]
+    const srcChainConfig = CONFIG.chains[CONFIG.transaction.srcChain as keyof typeof CONFIG.chains]
+    const dstChainConfig = CONFIG.chains[CONFIG.transaction.dstChain as keyof typeof CONFIG.chains]
+    const hubChainConfig = CONFIG.chains[CONFIG.transaction.hubChain as keyof typeof CONFIG.chains]
 
     if (CONFIG.transaction.srcChain === CONFIG.transaction.hubChain) {
         throw new Error('❌ Source chain cannot be hub chain. Use "3-direct-vault-deposit.ts" for hub→hub operations')
@@ -156,8 +156,8 @@ async function main() {
     const secondHopSendParam = {
         dstEid: dstChainConfig.eid,
         to: addressToBytes32(CONFIG.transaction.recipientAddress),
-        amountLD: expectedOutputAmount,
-        minAmountLD: minAmountOut,
+        amountLD: ethers.BigNumber.from(expectedOutputAmount),
+        minAmountLD: ethers.BigNumber.from(minAmountOut),
         extraOptions: Options.newOptions().addExecutorLzReceiveOption(100000, 0).toHex(),
         composeMsg: '0x',
         oftCmd: '0x',
@@ -171,8 +171,19 @@ async function main() {
         const shareOFT = new ethers.Contract(CONFIG.contracts.hub.shareOFT, oftAbi, hubProvider)
 
         try {
-            const quoteFee = await shareOFT.quoteSend(secondHopSendParam, false)
-            lzComposeValue = quoteFee.nativeFee.toString()
+            const quoteFeeResult = await shareOFT.quoteSend(
+                [
+                    secondHopSendParam.dstEid,
+                    secondHopSendParam.to,
+                    secondHopSendParam.amountLD,
+                    secondHopSendParam.minAmountLD,
+                    secondHopSendParam.extraOptions,
+                    secondHopSendParam.composeMsg,
+                    secondHopSendParam.oftCmd,
+                ],
+                false
+            )
+            lzComposeValue = quoteFeeResult[0].toString()
             console.log(`💰 Quoted second hop fee: ${(parseInt(lzComposeValue) / 1e18).toFixed(6)} ETH`)
         } catch (error) {
             console.warn(`⚠️  Quote failed, using default: 0.025 ETH`)
@@ -204,21 +215,23 @@ async function main() {
 
     // Build options for first hop
     let options = Options.newOptions()
-    options = options.addExecutorLzComposeOption(0, CONFIG.transaction.lzComposeGas, lzComposeValue)
+    options = options.addExecutorComposeOption(0, CONFIG.transaction.lzComposeGas, parseInt(lzComposeValue))
     const extraOptions = options.toHex()
 
     // Calculate first hop min amount with slippage
     const slippageBps = 50 // 0.5%
-    const firstHopMinAmount = parseUnits(
-        CONFIG.transaction.minAmount || (parseFloat(CONFIG.transaction.amount) * (1 - slippageBps / 10000)).toString(),
-        assetDecimals
+    const firstHopMinAmount = ethers.BigNumber.from(
+        parseUnits(
+            CONFIG.transaction.minAmount || (parseFloat(CONFIG.transaction.amount) * (1 - slippageBps / 10000)).toString(),
+            assetDecimals
+        )
     )
 
     // Build SendParam for first hop
     const sendParam = {
         dstEid: hubChainConfig.eid,
         to: addressToBytes32(CONFIG.contracts.hub.composer),
-        amountLD: inputAmountUnits,
+        amountLD: ethers.BigNumber.from(inputAmountUnits),
         minAmountLD: firstHopMinAmount,
         extraOptions: extraOptions,
         composeMsg: composeMsg,
@@ -261,14 +274,39 @@ async function main() {
 
     // Quote the transaction
     console.log(`💭 Quoting transaction...`)
-    const msgFee = await srcOFT.quoteSend(sendParam, false)
+    const msgFeeResult = await srcOFT.quoteSend(
+        [
+            sendParam.dstEid,
+            sendParam.to,
+            sendParam.amountLD,
+            sendParam.minAmountLD,
+            sendParam.extraOptions,
+            sendParam.composeMsg,
+            sendParam.oftCmd,
+        ],
+        false
+    )
+    const msgFee = { nativeFee: msgFeeResult[0], lzTokenFee: msgFeeResult[1] }
     console.log(`💰 LayerZero fee: ${(parseInt(msgFee.nativeFee.toString()) / 1e18).toFixed(6)} ETH`)
 
     // Send the transaction
     const txValue = isNativeToken ? msgFee.nativeFee.add(inputAmountUnits) : msgFee.nativeFee
 
     console.log(`📤 Sending transaction...`)
-    const tx = await srcOFT.send(sendParam, msgFee, srcWallet.address, { value: txValue })
+    const tx = await srcOFT.send(
+        [
+            sendParam.dstEid,
+            sendParam.to,
+            sendParam.amountLD,
+            sendParam.minAmountLD,
+            sendParam.extraOptions,
+            sendParam.composeMsg,
+            sendParam.oftCmd,
+        ],
+        [msgFee.nativeFee, msgFee.lzTokenFee],
+        srcWallet.address,
+        { value: txValue }
+    )
     console.log(`⏳ Transaction hash: ${tx.hash}`)
 
     const receipt = await tx.wait()
@@ -278,7 +316,7 @@ async function main() {
     console.log('✅ Asset Deposit Transaction Sent!')
     console.log('='.repeat(80))
     console.log(`Transaction Hash: ${receipt.transactionHash}`)
-    console.log(`LayerZero Scan: https://testnet.layerzeroscan.com/tx/${receipt.transactionHash}`)
+    console.log(`LayerZero Scan: https://layerzeroscan.com/tx/${receipt.transactionHash}`)
     console.log('='.repeat(80))
     console.log(`Flow: ${CONFIG.transaction.amount} assets (${srcChainConfig.name}) → Vault Deposit (${hubChainConfig.name}) → Shares (${dstChainConfig.name})`)
     console.log('='.repeat(80))
