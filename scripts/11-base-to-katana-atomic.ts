@@ -27,7 +27,7 @@ const CONFIG = {
         stargatePoolUSDC: '0x27a16dc786820B16E5c9028b75B99F6f604b5d26',
     },
     ethereum: {
-        rpcUrl: 'https://eth.llamarpc.com',
+        rpcUrl: 'https://ethereum-rpc.publicnode.com',
         eid: 30101,
         composer: '0x8A35897fda9E024d2aC20a937193e099679eC477',
         vault: '0x53E82ABbb12638F09d9e624578ccB666217a765e',

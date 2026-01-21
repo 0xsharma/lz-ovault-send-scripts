@@ -22,7 +22,7 @@ const CONFIG = {
     chains: {
         ethereum: {
             eid: 30101,
-            rpcUrl: 'https://eth.llamarpc.com',
+            rpcUrl: 'https://ethereum-rpc.publicnode.com',
             name: 'Ethereum',
         },
         katana: {
