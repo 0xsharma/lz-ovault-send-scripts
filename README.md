@@ -1,6 +1,6 @@
 # OVault Send Scripts
 
-10 standalone scripts for all OVault cross-chain operations. Each script is self-contained with inline configuration.
+11 standalone scripts for all OVault cross-chain operations. Each script is self-contained with inline configuration.
 
 ## Setup
 
@@ -22,6 +22,7 @@ npm install
 | 8 | `scripts/8-spoke-to-hub-redemption.ts` | Spoke (Shares) → Hub (Vault) → Hub (Assets) |
 | 9 | `scripts/9-simple-base-to-eth.ts` | Base (USDC) → Ethereum (USDC via Stargate) |
 | 10 | `scripts/10-eth-deposit-to-katana.ts` | Ethereum (USDC) → Vault → Katana (Shares via Composer) |
+| 11 | `scripts/11-base-to-katana-atomic.ts` | **Base (USDC) → Ethereum (Vault) → Katana (Shares) - ATOMIC** |
 
 ## Quick Start
 
@@ -86,6 +87,7 @@ npm run 7                    # Spoke to hub deposit
 npm run 8                    # Spoke to hub redemption
 npm run 9                    # Base to Ethereum USDC (Stargate)
 npm run 10                   # Ethereum to Katana shares (Composer)
+npm run 11                   # Base to Katana ATOMIC (2 txs)
 
 # Or directly with ts-node
 npx ts-node scripts/1-asset-deposit-cross-chain.ts
@@ -192,6 +194,7 @@ Or check your deployment logs.
 - Redeem Optimism → hub (keep assets): Script 8
 - Send USDC Base → Ethereum: Script 9
 - Deposit USDC on Ethereum, send shares to Katana: Script 10
+- Send USDC Base → Katana (atomic, 2 txs): Script 11
 
 ## Gas Settings
 
@@ -201,9 +204,38 @@ Or check your deployment logs.
 
 ## Base to Katana Flow
 
-For sending USDC from Base to Katana through Ethereum vault, use a two-step approach:
+### Atomic Flow - Script 11 ⚡ (Recommended - 2 Transactions)
 
-### Step 1: Base → Ethereum (Script 9)
+Send USDC from Base to Katana in one go using LayerZero compose:
+
+```bash
+npm run 11
+```
+
+**How it works:**
+1. Transaction 1: Approve USDC on Base
+2. Transaction 2: Send via Stargate with compose message
+   - Stargate bridges USDC to OVaultComposer on Ethereum
+   - Composer automatically deposits USDC and bridges shares to Katana
+   - All happens in one user transaction!
+
+**Configuration:**
+- Set `usdcAmount` (amount to send)
+- Set `recipientAddress` (recipient on Katana)
+- Set `privateKey` (your wallet)
+- Requires: USDC on Base, ETH on Base for gas (includes all fees)
+
+**Total:** 2 transactions, ~5-10 minutes end-to-end
+
+**Gas:** Uses 1,000,000 gas for compose execution to ensure success
+
+---
+
+### Alternative: Two-Step Flow - Scripts 9 + 10 (4 Transactions)
+
+If you prefer more control or troubleshooting, use separate steps:
+
+#### Step 1: Base → Ethereum (Script 9)
 Transfer USDC from Base to Ethereum using Stargate:
 ```bash
 npm run 9
@@ -214,7 +246,7 @@ npm run 9
 - Set `recipientAddress` (your wallet on Ethereum)
 - Requires: USDC on Base, ETH on Base for gas
 
-### Step 2: Ethereum → Katana (Script 10)
+#### Step 2: Ethereum → Katana (Script 10)
 Deposit USDC into vault and send shares to Katana atomically:
 ```bash
 npm run 10
