@@ -1,6 +1,6 @@
 # OVault Send Scripts
 
-8 standalone scripts for all OVault cross-chain operations. Each script is self-contained with inline configuration.
+10 standalone scripts for all OVault cross-chain operations. Each script is self-contained with inline configuration.
 
 ## Setup
 
@@ -20,6 +20,8 @@ npm install
 | 6 | `scripts/6-hub-to-spoke-shares.ts` | Hub (Shares) → Spoke (Shares) |
 | 7 | `scripts/7-spoke-to-hub-deposit.ts` | Spoke (Assets) → Hub (Vault) → Hub (Shares) |
 | 8 | `scripts/8-spoke-to-hub-redemption.ts` | Spoke (Shares) → Hub (Vault) → Hub (Assets) |
+| 9 | `scripts/9-simple-base-to-eth.ts` | Base (USDC) → Ethereum (USDC via Stargate) |
+| 10 | `scripts/10-eth-deposit-to-katana.ts` | Ethereum (USDC) → Vault → Katana (Shares via Composer) |
 
 ## Quick Start
 
@@ -82,6 +84,8 @@ npm run 5                    # Hub to spoke assets
 npm run 6                    # Hub to spoke shares
 npm run 7                    # Spoke to hub deposit
 npm run 8                    # Spoke to hub redemption
+npm run 9                    # Base to Ethereum USDC (Stargate)
+npm run 10                   # Ethereum to Katana shares (Composer)
 
 # Or directly with ts-node
 npx ts-node scripts/1-asset-deposit-cross-chain.ts
@@ -186,12 +190,42 @@ Or check your deployment logs.
 - Bridge shares hub → Optimism: Script 6
 - Deposit Base → hub (keep shares): Script 7
 - Redeem Optimism → hub (keep assets): Script 8
+- Send USDC Base → Ethereum: Script 9
+- Deposit USDC on Ethereum, send shares to Katana: Script 10
 
 ## Gas Settings
 
 - **Direct operations** (hub only): `lzComposeGas: 175000`
 - **Cross-chain operations**: `lzComposeGas: 395000`
 - **Complex vaults**: Increase to 500000+
+
+## Base to Katana Flow
+
+For sending USDC from Base to Katana through Ethereum vault, use a two-step approach:
+
+### Step 1: Base → Ethereum (Script 9)
+Transfer USDC from Base to Ethereum using Stargate:
+```bash
+npm run 9
+```
+
+**Configuration:**
+- Set `amount` (USDC amount to send)
+- Set `recipientAddress` (your wallet on Ethereum)
+- Requires: USDC on Base, ETH on Base for gas
+
+### Step 2: Ethereum → Katana (Script 10)
+Deposit USDC into vault and send shares to Katana atomically:
+```bash
+npm run 10
+```
+
+**Configuration:**
+- Set `amount` (USDC amount to deposit)
+- Set `recipientAddress` (recipient on Katana)
+- Requires: USDC on Ethereum (from step 1), ETH on Ethereum for gas
+
+**Total:** 4 transactions (2 approvals + 2 operations) across 2 chains
 
 ## Support
 

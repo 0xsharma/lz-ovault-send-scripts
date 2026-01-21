@@ -11,7 +11,9 @@
     "5": "ts-node scripts/5-hub-to-spoke-assets.ts",
     "6": "ts-node scripts/6-hub-to-spoke-shares.ts",
     "7": "ts-node scripts/7-spoke-to-hub-deposit.ts",
-    "8": "ts-node scripts/8-spoke-to-hub-redemption.ts"
+    "8": "ts-node scripts/8-spoke-to-hub-redemption.ts",
+    "9": "ts-node scripts/9-simple-base-to-eth.ts",
+    "10": "ts-node scripts/10-eth-deposit-to-katana.ts"
   },
   "dependencies": {
     "@layerzerolabs/lz-v2-utilities": "^2.3.3",
